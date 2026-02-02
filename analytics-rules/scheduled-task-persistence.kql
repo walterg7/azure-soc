@@ -1,0 +1,37 @@
+SecurityEvent
+| where EventID == 4698
+| extend
+    User = extract(@"<Data Name=""SubjectUserName"">(.*?)</Data>", 1, EventData),
+    TaskName = extract(@"<Data Name=""TaskName"">(.*?)</Data>", 1, EventData),
+    TaskContent = extract(@"<Data Name=""TaskContent"">(.*?)</Data>", 1, EventData)
+| extend
+    Command = extract(@"&lt;Command&gt;(.*?)&lt;/Command&gt;", 1, TaskContent),
+    Arguments = extract(@"&lt;Arguments&gt;(.*?)&lt;/Arguments&gt;", 1, TaskContent),
+    RunLevel = extract(@"&lt;RunLevel&gt;(.*?)&lt;/RunLevel&gt;", 1, TaskContent),
+    TriggerType = extract(@"&lt;(LogonTrigger|BootTrigger|CalendarTrigger)", 1, TaskContent)
+| where not(TaskName startswith @"\Microsoft\Windows\")
+| where User !in ("SYSTEM", "TrustedInstaller$")
+| where
+    Command has_any (
+        "powershell",
+        "cmd.exe",
+        "wscript",
+        "cscript",
+        "mshta",
+        "rundll32"
+    )
+    or Arguments has_any (
+        @"\Users\",
+        @"\AppData\",
+        @"\Temp\"
+    )
+| project
+    TimeGenerated,
+    Computer,
+    User,
+    TaskName,
+    Command,
+    Arguments,
+    TriggerType,
+    RunLevel
+| order by TimeGenerated desc
