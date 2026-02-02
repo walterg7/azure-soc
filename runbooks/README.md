@@ -7,7 +7,7 @@ Creates a high-priority NSG deny rule for a given source IP.
 - SrcIp
 
 ### Behavior
-- Adds deny rule, starting at priority 100 and incrementing by 1
+- Adds deny rule, starting at priority 101 and incrementing by 1
 - Rule name includes source IP for traceability
 - Skips rule creation if IP is already blocked
 - Designed to be reversible by deleting the rule
