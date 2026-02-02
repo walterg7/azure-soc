@@ -1,0 +1,199 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "contentVersion": "1.0.0.0",
+    "triggers": {
+      "Microsoft_Sentinel_incident": {
+        "type": "ApiConnectionWebhook",
+        "inputs": {
+          "host": {
+            "connection": {
+              "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+            }
+          },
+          "body": {
+            "callback_url": "@{listCallbackUrl()}"
+          },
+          "path": "/incident-creation"
+        }
+      }
+    },
+    "actions": {
+      "Compose": {
+        "type": "Compose",
+        "inputs": "@triggerBody()?['object']",
+        "runAfter": {}
+      },
+      "Initialize_variables": {
+        "type": "InitializeVariable",
+        "inputs": {
+          "variables": [
+            {
+              "name": "SrcIp",
+              "type": "string"
+            }
+          ]
+        },
+        "runAfter": {
+          "Compose": [
+            "Succeeded"
+          ]
+        }
+      },
+      "Condition": {
+        "type": "If",
+        "expression": {
+          "and": [
+            {
+              "equals": [
+                "@triggerBody()?['object']?['properties']?['relatedEntities'][0]?['kind']",
+                "Ip"
+              ]
+            }
+          ]
+        },
+        "actions": {
+          "Set_variable": {
+            "type": "SetVariable",
+            "inputs": {
+              "name": "SrcIp",
+              "value": "@triggerBody()?['object']?['properties']?['relatedEntities'][0]?['properties']?['address']"
+            }
+          }
+        },
+        "else": {
+          "actions": {
+            "Set_variable_1": {
+              "type": "SetVariable",
+              "inputs": {
+                "name": "SrcIp",
+                "value": "@triggerBody()?['object']?['properties']?['relatedEntities'][1]?['properties']?['address']"
+              }
+            }
+          }
+        },
+        "runAfter": {
+          "Initialize_variables": [
+            "Succeeded"
+          ]
+        }
+      },
+      "Add_comment_to_incident": {
+        "type": "ApiConnection",
+        "inputs": {
+          "host": {
+            "connection": {
+              "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+            }
+          },
+          "method": "post",
+          "body": {
+            "incidentArmId": "@triggerBody()?['object']?['id']",
+            "message": "<p class=\"editor-paragraph\"><b>Automated Brute-Force Response</b></p><p>Source IP: <b>@{variables('SrcIp')}</b><br>Detection: Excessive failed logon attempts<br>This IP exceeded the failed authentication threshold and has been added to NSG deny rule.</p>"
+          },
+          "path": "/Incidents/Comment"
+        },
+        "runAfter": {
+          "Condition": [
+            "Succeeded"
+          ]
+        }
+      },
+      "Create_automation_job": {
+        "type": "ApiConnection",
+        "inputs": {
+          "host": {
+            "connection": {
+              "name": "@parameters('$connections')['azureautomation']['connectionId']"
+            }
+          },
+          "method": "put",
+          "body": {
+            "properties": {
+              "parameters": {
+                "ResourceGroupName": "[RESOURCE_GROUP_NAME]",
+                "NSGName": "[NSG_NAME]",
+                "SrcIp": "@variables('SrcIp')"
+              }
+            }
+          },
+          "path": "/subscriptions/@{encodeURIComponent('[SUBSCRIPTION_ID]')}/resourceGroups/@{encodeURIComponent('[RESOURCE_GROUP_NAME]')}/providers/Microsoft.Automation/automationAccounts/@{encodeURIComponent('[AUTOMATION_ACCOUNT_NAME]')}/jobs",
+          "queries": {
+            "x-ms-api-version": "2015-10-31",
+            "runbookName": "[RUNBOOK_NAME]",
+            "wait": false
+          }
+        },
+        "runAfter": {
+          "Add_comment_to_incident": [
+            "Succeeded"
+          ]
+        }
+      },
+      "Update_incident_tags": {
+        "type": "ApiConnection",
+        "inputs": {
+          "host": {
+            "connection": {
+              "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+            }
+          },
+          "method": "put",
+          "body": {
+            "incidentArmId": "@triggerBody()?['object']?['id']",
+            "tagsToAdd": {
+              "TagsToAdd": [
+                {
+                  "Tag": "BruteForce"
+                },
+                {
+                  "Tag": "AutomatedResponse"
+                }
+              ]
+            }
+          },
+          "path": "/Incidents"
+        },
+        "runAfter": {
+          "Create_automation_job": [
+            "Succeeded"
+          ]
+        }
+      }
+    },
+    "outputs": {},
+    "parameters": {
+      "$connections": {
+        "type": "Object",
+        "defaultValue": {}
+      }
+    }
+  },
+  "parameters": {
+    "$connections": {
+      "type": "Object",
+      "value": {
+        "azuresentinel": {
+          "id": "/subscriptions/[SUBSCRIPTION_ID]/providers/Microsoft.Web/locations/[LOCATION]/managedApis/azuresentinel",
+          "connectionId": "/subscriptions/[SUBSCRIPTION_ID]/resourceGroups/[RESOURCE_GROUP_NAME]/providers/Microsoft.Web/connections/azuresentinel",
+          "connectionName": "azuresentinel",
+          "connectionProperties": {
+            "authentication": {
+              "type": "ManagedServiceIdentity"
+            }
+          }
+        },
+        "azureautomation": {
+          "id": "/subscriptions/[SUBSCRIPTION_ID]/providers/Microsoft.Web/locations/[LOCATION]/managedApis/azureautomation",
+          "connectionId": "/subscriptions/[SUBSCRIPTION_ID]/resourceGroups/[RESOURCE_GROUP_NAME]/providers/Microsoft.Web/connections/azureautomation",
+          "connectionName": "azureautomation",
+          "connectionProperties": {
+            "authentication": {
+              "type": "ManagedServiceIdentity"
+            }
+          }
+        }
+      }
+    }
+  }
+}
