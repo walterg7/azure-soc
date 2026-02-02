@@ -1,0 +1,13 @@
+SecurityEvent
+| where EventID == 4625
+| extend
+    SrcIp = tostring(IpAddress),
+    TargetUser = TargetUserName
+| where isnotempty(SrcIp)
+| summarize
+    Failures = count(),
+    Accounts = dcount(TargetUser),
+    LogonTypes = make_set(LogonType)
+    by SrcIp, Computer, bin(TimeGenerated, 5m)
+| where Failures >= 20 or Accounts >= 5
+| order by Failures desc
