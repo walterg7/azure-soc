@@ -17,4 +17,4 @@
 - runbooks/ → NSG enforcement logic
 
 ## Documentation
-Full walkthrough and design rationale available on []
+Full walkthrough and design rationale available at: https://walterg7.github.io/posts/azure-soc-main/
